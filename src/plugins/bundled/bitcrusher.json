@@ -1,0 +1,30 @@
+{
+  "id": "json.bitcrusher",
+  "name": "Bit Crusher",
+  "category": "Distortion",
+  "description": "Quantises the signal to a handful of levels. Oversampling is off on purpose — the aliasing is the sound.",
+  "params": [
+    { "key": "bits", "label": "Bits", "min": 1, "max": 16, "def": 6, "prec": 1 },
+    { "key": "tone", "label": "Tone", "min": 400, "max": 18000, "def": 7000, "unit": "Hz", "log": true },
+    { "key": "mix", "label": "Mix", "min": 0, "max": 1, "def": 1 },
+    { "key": "out", "label": "Output", "min": -24, "max": 6, "def": -3, "unit": "dB" }
+  ],
+  "graph": {
+    "nodes": {
+      "sh": { "type": "shaper", "oversample": "none", "curve": { "kind": "bitcrush", "bits": "bits" } },
+      "tone": { "type": "biquad", "filter": "lowpass" },
+      "dry": { "type": "gain" },
+      "wet": { "type": "gain" }
+    },
+    "connect": [
+      ["in", "dry", "out"],
+      ["in", "sh", "tone", "wet", "out"]
+    ],
+    "bind": [
+      { "param": "tone", "to": "tone.frequency" },
+      { "param": "mix", "to": "wet.gain" },
+      { "param": "mix", "to": "dry.gain", "map": "1 - x" },
+      { "param": "out", "to": "out.gain", "map": "db2gain(x)" }
+    ]
+  }
+}

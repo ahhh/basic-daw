@@ -7,6 +7,7 @@ import { engine } from "./audio/engine.js";
 import { renderRange, normalizeBuffer, analyzeBuffer } from "./audio/render.js";
 import { encodeWav } from "./audio/wav.js";
 import { rehydrateAssets, serializeAssets } from "./assets.js";
+import { missingInProject } from "./plugins/registry.js";
 import { getAssetBlob, putAssetBlob, putProject, getProject, listProjects, deleteProject, setMeta, getMeta, storageEstimate } from "./storage/db.js";
 
 /* ── save / load ──────────────────────────────────────────────────────── */
@@ -91,6 +92,7 @@ export function projectMenu(anchor) {
     { label: "Export bundle (with audio)", onClick: () => exportProjectFile(true) },
     { label: "Import project file…", onClick: () => $("#proj-input").click() },
     "-",
+    { label: "Plugins…", onClick: () => import("./ui/plugins.js").then((m) => m.pluginManager()) },
     { label: "Storage…", onClick: () => storageDialog() },
   ];
 }
@@ -235,6 +237,7 @@ function rangeFor(kind) {
 function bounceDialog(kind) {
   const [start, end] = rangeFor(kind);
   if (end <= start) return toast("Nothing to bounce", "err");
+  const missing = missingInProject(state.project);
 
   let bits = 24;
   let rate = engine.sampleRate;
@@ -247,6 +250,16 @@ function bounceDialog(kind) {
       const bar = el("i");
       const progress = el("div.progress", { style: { display: "none" } }, bar);
       const info = el("div.insp-empty", null, `Range ${fmtDur(start)} → ${fmtDur(end)} (${fmtDur(end - start)})`);
+      // Bouncing with an insert that has no plugin would quietly render
+      // something other than the session — say so before it costs a render.
+      const warn = missing.length
+        ? el(
+            "div.plug-warn",
+            null,
+            el("b", null, `${missing.length} insert plugin${missing.length > 1 ? "s are" : " is"} missing`),
+            el("div.a-meta", null, `${missing.join(", ")} — those inserts will pass audio through unprocessed.`),
+          )
+        : null;
 
       const sel = (label, options, value, onChange) => {
         const s = el("select.select", { onchange: (e) => onChange(e.target.value) });
@@ -256,6 +269,7 @@ function bounceDialog(kind) {
 
       body.append(
         info,
+        warn,
         sel(
           "Bit depth",
           [

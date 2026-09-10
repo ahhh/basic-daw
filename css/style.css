@@ -1082,3 +1082,125 @@ input[type="number"]::-webkit-inner-spin-button {
 .dragging-clip {
   cursor: grabbing !important;
 }
+
+/* ── plugin manager ─────────────────────────────────────────────────────── */
+
+.btn.small {
+  padding: 3px 6px;
+  font-size: 10px;
+}
+
+.plug-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.plug-head {
+  color: var(--fg-dim);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin: 12px 0 4px;
+  padding-bottom: 3px;
+  border-bottom: 1px solid var(--border);
+}
+.plug-head:first-child {
+  margin-top: 0;
+}
+
+.plug-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 7px 6px;
+  border-radius: 4px;
+  background: var(--bg3);
+}
+.plug-row:hover {
+  background: var(--bg4);
+}
+.plug-row b {
+  font-size: 12px;
+}
+
+.plug-id {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: var(--bg);
+  color: var(--fg-dim);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+}
+
+.plug-actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: 4px;
+}
+
+.plug-warn {
+  padding: 8px;
+  margin-bottom: 8px;
+  border: 1px solid var(--accent2);
+  border-radius: 4px;
+  background: #2a2218;
+  color: var(--accent2);
+}
+.plug-warn .a-meta {
+  color: #c9a878;
+}
+
+.plug-add {
+  margin-top: 16px;
+  padding-top: 4px;
+}
+.plug-add .btnrow {
+  margin: 6px 0;
+}
+
+.plug-text {
+  width: 100%;
+  box-sizing: border-box;
+  margin: 6px 0;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  resize: vertical;
+}
+.plug-text:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+/* Read-only JSON, used for stored params of a missing plugin and for errors. */
+.fx-dump {
+  max-height: 220px;
+  overflow: auto;
+  margin: 6px 0;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--fg-dim);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* A parameter's one-line note, under the control it explains. */
+.p-hint {
+  margin: -4px 0 4px;
+  padding-left: 8px;
+  border-left: 2px solid var(--border-lt);
+  font-style: italic;
+}

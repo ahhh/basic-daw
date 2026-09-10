@@ -1,0 +1,25 @@
+{
+  "id": "json.tilt",
+  "name": "Tilt EQ",
+  "category": "EQ / Filter",
+  "description": "One knob, two shelves moving in opposite directions. Darker to the left, brighter to the right.",
+  "params": [
+    { "key": "tilt", "label": "Tilt", "min": -12, "max": 12, "def": 0, "unit": "dB" },
+    { "key": "pivot", "label": "Pivot", "min": 200, "max": 6000, "def": 900, "unit": "Hz", "log": true },
+    { "key": "trim", "label": "Trim", "min": -12, "max": 12, "def": 0, "unit": "dB" }
+  ],
+  "graph": {
+    "nodes": {
+      "lo": { "type": "biquad", "filter": "lowshelf" },
+      "hi": { "type": "biquad", "filter": "highshelf" }
+    },
+    "connect": [["in", "lo", "hi", "out"]],
+    "bind": [
+      { "param": "tilt", "to": "lo.gain", "map": "0 - x" },
+      { "param": "tilt", "to": "hi.gain" },
+      { "param": "pivot", "to": "lo.frequency" },
+      { "param": "pivot", "to": "hi.frequency" },
+      { "param": "trim", "to": "out.gain", "map": "db2gain(x)" }
+    ]
+  }
+}

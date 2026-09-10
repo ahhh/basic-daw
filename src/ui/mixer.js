@@ -5,7 +5,7 @@
 import { $, el, coalesce, popupMenu, fmtDb, clamp } from "../util.js";
 import { bus, changed, pushUndo, state, trackById } from "../state.js";
 import { engine } from "../audio/engine.js";
-import { EFFECT_DEFS, newEffect } from "../audio/effects.js";
+import { labelOf, newEffect, pluginsByCategory } from "../plugins/registry.js";
 import { fader, knob } from "./controls.js";
 import { showInspector } from "./inspector.js";
 
@@ -73,7 +73,7 @@ function buildStrip(id) {
       const slot = el(
         `div.fx-slot${def.on === false ? ".bypassed" : ""}`,
         {
-          title: `${EFFECT_DEFS[def.type]?.label ?? def.type} — click to edit, right-click for options`,
+          title: `${labelOf(def.type)} — click to edit, right-click for options`,
           onclick: () => {
             focus(id);
             showInspector({ kind: "fx", ownerId: id, fxId: def.id });
@@ -83,7 +83,7 @@ function buildStrip(id) {
             popupMenu(e.clientX, e.clientY, fxMenu(id, i));
           },
         },
-        el("span.fx-name", null, EFFECT_DEFS[def.type]?.label ?? def.type),
+        el("span.fx-name", null, labelOf(def.type)),
       );
       fxBox.append(slot);
     });
@@ -209,18 +209,21 @@ function syncValues() {
 /* ── insert chain menus ───────────────────────────────────────────────── */
 
 function addFxMenu(ownerId) {
+  const add = (type) => {
+    const t = target(ownerId);
+    pushUndo("add insert");
+    t.fx.push(newEffect(type));
+    applyChain(ownerId);
+    showInspector({ kind: "fx", ownerId, fxId: t.fx.at(-1).id });
+  };
   return [
     { title: "Add insert" },
-    ...Object.entries(EFFECT_DEFS).map(([type, def]) => ({
-      label: def.label,
-      onClick: () => {
-        const t = target(ownerId);
-        pushUndo("add insert");
-        t.fx.push(newEffect(type));
-        applyChain(ownerId);
-        showInspector({ kind: "fx", ownerId, fxId: t.fx.at(-1).id });
-      },
-    })),
+    ...pluginsByCategory().flatMap(([category, list]) => [
+      { title: category },
+      ...list.map((p) => ({ label: p.name, onClick: () => add(p.id) })),
+    ]),
+    "-",
+    { label: "Manage plugins…", onClick: () => import("./plugins.js").then((m) => m.pluginManager()) },
   ];
 }
 
@@ -228,7 +231,7 @@ function fxMenu(ownerId, index) {
   const t = target(ownerId);
   const def = t.fx[index];
   return [
-    { title: EFFECT_DEFS[def.type]?.label ?? def.type },
+    { title: labelOf(def.type) },
     {
       label: def.on === false ? "Enable" : "Bypass",
       onClick: () => {

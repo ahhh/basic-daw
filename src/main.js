@@ -13,8 +13,13 @@ import { initPool } from "./ui/pool.js";
 import { initTransport, updateReadouts, syncButtons } from "./ui/transport.js";
 import { initKeys } from "./ui/keys.js";
 import { importProjectFile, restoreLastSession, saveProject, startAutosave } from "./project.js";
+import { initPlugins } from "./plugins/loader.js";
 
 async function boot() {
+  // Plugins first: restoring a session builds insert chains, and an effect
+  // whose plugin is not registered yet would come back as a passthrough.
+  await initPlugins();
+
   initTimeline();
   initTracks();
   initMixer();
@@ -178,12 +183,28 @@ async function exposeDebugApi() {
     import("./project.js"),
     import("./assets.js"),
   ]);
-  const [effects, render, doc] = await Promise.all([
+  const [effects, render, doc, registry, loader] = await Promise.all([
     import("./audio/effects.js"),
     import("./audio/render.js"),
     import("./state.js"),
+    import("./plugins/registry.js"),
+    import("./plugins/loader.js"),
   ]);
-  globalThis.daw = { state, assets, engine, bus, timeline, tracks, pool, project, effects, render, undo: doc.undo, redo: doc.redo };
+  globalThis.daw = {
+    state,
+    assets,
+    engine,
+    bus,
+    timeline,
+    tracks,
+    pool,
+    project,
+    effects,
+    render,
+    plugins: { ...registry, ...loader },
+    undo: doc.undo,
+    redo: doc.redo,
+  };
 }
 
 boot().catch((err) => {

@@ -1,0 +1,28 @@
+{
+  "id": "json.tremolo",
+  "name": "Tremolo",
+  "category": "Modulation",
+  "description": "Amplitude modulation by an LFO. The plainest possible JSON plugin: one oscillator driving one gain.",
+  "params": [
+    { "key": "rate", "label": "Rate", "min": 0.1, "max": 20, "def": 4.5, "unit": "Hz", "log": true, "prec": 2 },
+    { "key": "depth", "label": "Depth", "min": 0, "max": 1, "def": 0.6 },
+    { "key": "shape", "label": "Shape", "choices": ["sine", "triangle", "square"], "def": "sine" }
+  ],
+  "graph": {
+    "nodes": {
+      "vca": { "type": "gain" },
+      "lfo": { "type": "osc", "wave": "sine" },
+      "amt": { "type": "gain" }
+    },
+    "connect": [
+      ["in", "vca", "out"],
+      ["lfo", "amt", "vca.gain"]
+    ],
+    "bind": [
+      { "param": "rate", "to": "lfo.frequency" },
+      { "param": "shape", "to": "lfo.wave" },
+      { "param": "depth", "to": "amt.gain", "map": "x / 2" },
+      { "param": "depth", "to": "vca.gain", "map": "1 - x / 2" }
+    ]
+  }
+}

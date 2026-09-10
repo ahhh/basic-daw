@@ -1,0 +1,37 @@
+{
+  "id": "json.autowah",
+  "name": "Auto-Wah",
+  "category": "Modulation",
+  "description": "An LFO sweeping a resonant filter, mixed against the dry signal.",
+  "params": [
+    { "key": "rate", "label": "Rate", "min": 0.05, "max": 10, "def": 1.2, "unit": "Hz", "log": true, "prec": 2 },
+    { "key": "center", "label": "Center", "min": 100, "max": 6000, "def": 900, "unit": "Hz", "log": true },
+    { "key": "sweep", "label": "Sweep", "min": 0, "max": 4000, "def": 1400, "unit": "Hz" },
+    { "key": "q", "label": "Reso", "min": 0.5, "max": 20, "def": 6 },
+    { "key": "mode", "label": "Mode", "choices": ["bandpass", "lowpass", "peaking"], "def": "bandpass" },
+    { "key": "mix", "label": "Mix", "min": 0, "max": 1, "def": 0.8 }
+  ],
+  "graph": {
+    "nodes": {
+      "f": { "type": "biquad", "filter": "bandpass" },
+      "lfo": { "type": "osc", "wave": "sine" },
+      "amt": { "type": "gain" },
+      "dry": { "type": "gain" },
+      "wet": { "type": "gain" }
+    },
+    "connect": [
+      ["in", "dry", "out"],
+      ["in", "f", "wet", "out"],
+      ["lfo", "amt", "f.frequency"]
+    ],
+    "bind": [
+      { "param": "rate", "to": "lfo.frequency" },
+      { "param": "sweep", "to": "amt.gain" },
+      { "param": "center", "to": "f.frequency" },
+      { "param": "q", "to": "f.Q" },
+      { "param": "mode", "to": "f.filter" },
+      { "param": "mix", "to": "wet.gain" },
+      { "param": "mix", "to": "dry.gain", "map": "1 - x" }
+    ]
+  }
+}

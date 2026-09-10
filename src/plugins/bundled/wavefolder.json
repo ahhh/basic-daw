@@ -1,0 +1,29 @@
+{
+  "id": "json.wavefolder",
+  "name": "Wavefolder",
+  "category": "Distortion",
+  "description": "Reflects the waveform back on itself instead of clipping it. Extremely bright — the output filter is not optional.",
+  "params": [
+    { "key": "fold", "label": "Fold", "min": 1, "max": 12, "def": 2.5, "prec": 2 },
+    { "key": "sym", "label": "Symmetry", "min": -0.5, "max": 0.5, "def": 0, "prec": 3 },
+    { "key": "tame", "label": "Tame", "min": 800, "max": 16000, "def": 6000, "unit": "Hz", "log": true },
+    { "key": "out", "label": "Output", "min": -24, "max": 0, "def": -8, "unit": "dB" }
+  ],
+  "graph": {
+    "nodes": {
+      "sh": { "type": "shaper", "oversample": "4x", "curve": { "kind": "fold", "amount": "fold" } },
+      "off": { "type": "constant" },
+      "pre": { "type": "gain" },
+      "tame": { "type": "biquad", "filter": "lowpass" }
+    },
+    "connect": [
+      ["in", "pre", "sh", "tame", "out"],
+      ["off", "pre.gain"]
+    ],
+    "bind": [
+      { "param": "sym", "to": "off.offset" },
+      { "param": "tame", "to": "tame.frequency" },
+      { "param": "out", "to": "out.gain", "map": "db2gain(x)" }
+    ]
+  }
+}

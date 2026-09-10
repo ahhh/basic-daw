@@ -1,0 +1,31 @@
+{
+  "id": "json.haas",
+  "name": "Haas Widener",
+  "category": "Stereo",
+  "description": "Delays one channel by a few milliseconds. Wide on speakers, but check it in mono — the trade is comb filtering.",
+  "params": [
+    { "key": "amount", "label": "Delay", "min": 0, "max": 40, "def": 14, "unit": "ms", "prec": 1 },
+    { "key": "swap", "label": "Delay left", "bool": true, "def": false, "hint": "Off delays the right channel, on delays the left." },
+    { "key": "trim", "label": "Trim", "min": -12, "max": 6, "def": 0, "unit": "dB" }
+  ],
+  "graph": {
+    "nodes": {
+      "st": { "type": "gain", "channelCount": 2, "channelCountMode": "explicit", "channelInterpretation": "speakers" },
+      "split": { "type": "splitter", "channels": 2 },
+      "dL": { "type": "delay", "maxDelay": 0.05 },
+      "dR": { "type": "delay", "maxDelay": 0.05 },
+      "merge": { "type": "merger", "channels": 2 }
+    },
+    "connect": [
+      ["in", "st", "split"],
+      ["split[0]", "dL", "merge[0]"],
+      ["split[1]", "dR", "merge[1]"],
+      ["merge", "out"]
+    ],
+    "bind": [
+      { "param": "amount", "to": "dL.delayTime", "map": "amount / 1000 * swap" },
+      { "param": "amount", "to": "dR.delayTime", "map": "amount / 1000 * (1 - swap)" },
+      { "param": "trim", "to": "out.gain", "map": "db2gain(x)" }
+    ]
+  }
+}

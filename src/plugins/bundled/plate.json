@@ -1,0 +1,37 @@
+{
+  "id": "json.plate",
+  "name": "Plate Reverb",
+  "category": "Delay / Reverb",
+  "description": "Convolution against a generated impulse whose slow attack gives it the density of a plate rather than a room.",
+  "params": [
+    { "key": "size", "label": "Size", "min": 0.3, "max": 6, "def": 1.8, "unit": "s", "prec": 2 },
+    { "key": "decay", "label": "Decay", "min": 0.5, "max": 8, "def": 3, "prec": 2 },
+    { "key": "build", "label": "Build", "min": 20, "max": 800, "def": 220, "hint": "How fast the tail reaches full density. Low is soft and plate-like." },
+    { "key": "predelay", "label": "Pre-dly", "min": 0, "max": 0.2, "def": 0.025, "unit": "s", "prec": 3 },
+    { "key": "damp", "label": "Damp", "min": 1000, "max": 18000, "def": 7000, "unit": "Hz", "log": true },
+    { "key": "mix", "label": "Mix", "min": 0, "max": 1, "def": 0.25 }
+  ],
+  "graph": {
+    "nodes": {
+      "pre": { "type": "delay", "maxDelay": 0.5 },
+      "conv": {
+        "type": "convolver",
+        "normalize": true,
+        "ir": { "kind": "expr", "seconds": "size", "expr": "noise * exp(0 - t * decay * 5) * (1 - exp(0 - t * build))" }
+      },
+      "damp": { "type": "biquad", "filter": "lowpass" },
+      "dry": { "type": "gain" },
+      "wet": { "type": "gain" }
+    },
+    "connect": [
+      ["in", "dry", "out"],
+      ["in", "pre", "conv", "damp", "wet", "out"]
+    ],
+    "bind": [
+      { "param": "predelay", "to": "pre.delayTime" },
+      { "param": "damp", "to": "damp.frequency" },
+      { "param": "mix", "to": "wet.gain" },
+      { "param": "mix", "to": "dry.gain", "map": "1 - x * 0.5" }
+    ]
+  }
+}

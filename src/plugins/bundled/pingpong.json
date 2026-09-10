@@ -1,0 +1,51 @@
+{
+  "id": "json.pingpong",
+  "name": "Ping-Pong Echo",
+  "category": "Delay / Reverb",
+  "description": "Stereo delay with damped feedback. The cross-feed switch rewires the graph, which is what a \"when\" clause is for.",
+  "params": [
+    { "key": "time", "label": "Time", "min": 0.01, "max": 2, "def": 0.34, "unit": "s", "prec": 3 },
+    { "key": "spread", "label": "Spread", "min": 1, "max": 1.5, "def": 1.02, "prec": 3, "hint": "Right-channel time multiplier. 1.0 is dead centre." },
+    { "key": "feedback", "label": "Feedback", "min": 0, "max": 0.95, "def": 0.38 },
+    { "key": "damp", "label": "Damp", "min": 500, "max": 18000, "def": 5000, "unit": "Hz", "log": true },
+    { "key": "cross", "label": "Ping-pong", "bool": true, "def": true },
+    { "key": "mix", "label": "Mix", "min": 0, "max": 1, "def": 0.28 }
+  ],
+  "graph": {
+    "nodes": {
+      "dL": { "type": "delay", "maxDelay": 2.5 },
+      "dR": { "type": "delay", "maxDelay": 2.5 },
+      "fbL": { "type": "gain" },
+      "fbR": { "type": "gain" },
+      "dampL": { "type": "biquad", "filter": "lowpass" },
+      "dampR": { "type": "biquad", "filter": "lowpass" },
+      "merge": { "type": "merger", "channels": 2 },
+      "dry": { "type": "gain" },
+      "wet": { "type": "gain" }
+    },
+    "connect": [
+      ["in", "dry", "out"],
+      ["in", "dL"],
+      ["in", "dR"],
+      ["dL", "dampL", "fbL"],
+      ["dR", "dampR", "fbR"],
+      ["dL", "merge[0]"],
+      ["dR", "merge[1]"],
+      ["merge", "wet", "out"],
+      { "from": "fbL", "to": "dL", "when": "1 - cross" },
+      { "from": "fbR", "to": "dR", "when": "1 - cross" },
+      { "from": "fbL", "to": "dR", "when": "cross" },
+      { "from": "fbR", "to": "dL", "when": "cross" }
+    ],
+    "bind": [
+      { "param": "time", "to": "dL.delayTime" },
+      { "param": "time", "to": "dR.delayTime", "map": "time * spread" },
+      { "param": "feedback", "to": "fbL.gain" },
+      { "param": "feedback", "to": "fbR.gain" },
+      { "param": "damp", "to": "dampL.frequency" },
+      { "param": "damp", "to": "dampR.frequency" },
+      { "param": "mix", "to": "wet.gain" },
+      { "param": "mix", "to": "dry.gain", "map": "1 - x * 0.4" }
+    ]
+  }
+}

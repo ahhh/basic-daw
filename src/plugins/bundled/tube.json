@@ -1,0 +1,35 @@
+{
+  "id": "json.tube",
+  "name": "Tube Warmth",
+  "category": "Distortion",
+  "description": "Asymmetric saturation — the bias term adds even harmonics the symmetric tanh curve cannot produce.",
+  "params": [
+    { "key": "drive", "label": "Drive", "min": 1, "max": 24, "def": 4, "prec": 2 },
+    { "key": "bias", "label": "Bias", "min": 0, "max": 0.6, "def": 0.18, "prec": 3, "hint": "Asymmetry. 0 is a plain tanh; higher adds even harmonics." },
+    { "key": "tone", "label": "Tone", "min": 800, "max": 18000, "def": 11000, "unit": "Hz", "log": true },
+    { "key": "mix", "label": "Mix", "min": 0, "max": 1, "def": 1 },
+    { "key": "out", "label": "Output", "min": -24, "max": 6, "def": -4, "unit": "dB" }
+  ],
+  "graph": {
+    "nodes": {
+      "sh": {
+        "type": "shaper",
+        "oversample": "4x",
+        "curve": { "kind": "expr", "expr": "(tanh(drive * x + bias) - tanh(bias)) / tanh(drive + bias)" }
+      },
+      "tone": { "type": "biquad", "filter": "lowpass" },
+      "dry": { "type": "gain" },
+      "wet": { "type": "gain" }
+    },
+    "connect": [
+      ["in", "dry", "out"],
+      ["in", "sh", "tone", "wet", "out"]
+    ],
+    "bind": [
+      { "param": "tone", "to": "tone.frequency" },
+      { "param": "mix", "to": "wet.gain" },
+      { "param": "mix", "to": "dry.gain", "map": "1 - x" },
+      { "param": "out", "to": "out.gain", "map": "db2gain(x)" }
+    ]
+  }
+}

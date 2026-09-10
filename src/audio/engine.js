@@ -15,6 +15,7 @@
 import { clamp, dbToGain } from "../util.js";
 import { assets, state, trackAudible, beatSeconds } from "../state.js";
 import { buildChain, disposeChain } from "./effects.js";
+import { signatureOf } from "../plugins/registry.js";
 
 const LOOKAHEAD = 0.35; // seconds of audio scheduled ahead of the clock
 const TICK_MS = 40;
@@ -132,10 +133,10 @@ class Engine {
     // Rebuild any chain whose effect list changed shape (type/bypass/order).
     for (const t of state.project.tracks) {
       const bundle = this.tracks.get(t.id);
-      const sig = chainSignature(t.fx);
+      const sig = signatureOf(t.fx);
       if (sig !== bundle.fxSig) this.rebuildTrackChain(t, bundle);
     }
-    const msig = chainSignature(state.project.master.fx);
+    const msig = signatureOf(state.project.master.fx);
     if (msig !== this.fxSignature) {
       this.fxSignature = msig;
       this.rebuildMasterChain();
@@ -144,12 +145,28 @@ class Engine {
     this.updateMix();
   }
 
+  /**
+   * Force every insert chain to be rebuilt.
+   *
+   * Installing or removing a plugin does not change any chain's signature — the
+   * effect definitions are untouched, only what they resolve to — so the normal
+   * `syncGraph` comparison would see no work to do and a newly installed plugin
+   * would stay a passthrough until something else disturbed the graph.
+   */
+  rebuildAllChains() {
+    if (!this.ctx) return;
+    for (const track of state.project.tracks) this.rebuildTrackChain(track);
+    this.rebuildMasterChain();
+    this.fxSignature = signatureOf(state.project.master.fx);
+    this.updateMix();
+  }
+
   rebuildTrackChain(track, bundle = this.tracks.get(track.id)) {
     if (!bundle) return;
     disposeChain(bundle.fxLive);
     bundle.input.disconnect();
     bundle.fxLive = buildChain(this.ctx, track.fx, bundle.input, bundle.gain);
-    bundle.fxSig = chainSignature(track.fx);
+    bundle.fxSig = signatureOf(track.fx);
   }
 
   /** Push live parameter values (fader, pan, mute/solo, fx params) into nodes. */
@@ -512,10 +529,6 @@ function projectEnd() {
   let end = 0;
   for (const c of state.project.clips) end = Math.max(end, c.start + c.duration);
   return end;
-}
-
-function chainSignature(fx) {
-  return (fx ?? []).map((f) => `${f.id}:${f.type}:${f.on !== false ? 1 : 0}`).join("|");
 }
 
 function syncChainParams(defs, live) {

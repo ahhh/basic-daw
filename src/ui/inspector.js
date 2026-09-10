@@ -1,6 +1,8 @@
 // Right-hand inspector. One panel, four modes: clip, track, master, effect.
-// Effect parameter rows are generated from EFFECT_DEFS, so adding an effect in
-// effects.js gives you a full editor for free.
+// Effect parameter rows are generated from the plugin's `params` block, so a
+// plugin — built-in, bundled or JSON you wrote — gets a full editor for free.
+// The mapping from a parameter's fields to a widget is documented in
+// docs/ui-components.md.
 
 import { $, el, clamp, coalesce, fmtDb, fmtDur, toast, popupMenu } from "../util.js";
 import {
@@ -15,7 +17,7 @@ import {
   projectDuration,
 } from "../state.js";
 import { engine } from "../audio/engine.js";
-import { EFFECT_DEFS, defaultParams, newEffect } from "../audio/effects.js";
+import { defaultParams, getPlugin, labelOf, newEffect, pluginsByCategory, resolveId } from "../plugins/registry.js";
 import { sliderRow } from "./controls.js";
 import { drawPeaks } from "../audio/peaks.js";
 
@@ -460,7 +462,7 @@ function chainSection(ownerId, owner) {
             ]);
           },
         },
-        el("span.fx-name", null, EFFECT_DEFS[def.type]?.label ?? def.type),
+        el("span.fx-name", null, labelOf(def.type)),
         el("span.a-meta", null, "▸"),
       ),
     );
@@ -469,20 +471,23 @@ function chainSection(ownerId, owner) {
     el("div.fx-add", {
       textContent: "+ add insert",
       onclick: (e) =>
-        popupMenu(
-          e.clientX,
-          e.clientY,
-          Object.entries(EFFECT_DEFS).map(([type, d]) => ({
-            label: d.label,
-            onClick: () => {
-              pushUndo("add insert");
-              owner.fx.push(newEffect(type));
-              engine.syncGraph();
-              changed("mix");
-              showInspector({ kind: "fx", ownerId, fxId: owner.fx.at(-1).id });
-            },
-          })),
-        ),
+        popupMenu(e.clientX, e.clientY, [
+          ...pluginsByCategory().flatMap(([category, list]) => [
+            { title: category },
+            ...list.map((p) => ({
+              label: p.name,
+              onClick: () => {
+                pushUndo("add insert");
+                owner.fx.push(newEffect(p.id));
+                engine.syncGraph();
+                changed("mix");
+                showInspector({ kind: "fx", ownerId, fxId: owner.fx.at(-1).id });
+              },
+            })),
+          ]),
+          "-",
+          { label: "Manage plugins…", onClick: () => import("./plugins.js").then((m) => m.pluginManager()) },
+        ]),
     }),
   );
   return el("div.sec", null, el("h3", null, "Inserts"), list);
@@ -494,11 +499,12 @@ function renderFx() {
   const owner = mode.ownerId === "master" ? state.project.master : trackById(mode.ownerId);
   const def = owner?.fx.find((f) => f.id === mode.fxId);
   if (!def) return renderNone();
-  const meta = EFFECT_DEFS[def.type];
-  titleEl.textContent = meta.label;
+  const plugin = getPlugin(def.type);
+  if (!plugin) return renderMissingFx(owner, def);
+  titleEl.textContent = plugin.name;
 
   const rows = [];
-  for (const p of meta.params) {
+  for (const p of plugin.params) {
     if (p.choices) {
       rows.push(row(p.label, select(p.choices, def.params[p.key], (v) => setParam(def, p.key, v))));
     } else if (p.bool) {
@@ -528,6 +534,9 @@ function renderFx() {
         }).root,
       );
     }
+    // A parameter can carry a one-line note; it is the only prose a plugin
+    // author gets, so it renders right under the control it explains.
+    if (p.hint) rows.push(el("div.insp-empty.p-hint", null, p.hint));
   }
 
   const head = el(
@@ -556,14 +565,55 @@ function renderFx() {
   );
 
   const parts = [head];
-  if (def.type === "eq" || def.type === "filter") {
+  if (plugin.description) parts.push(el("div.insp-empty", null, plugin.description));
+  const kind = resolveId(def.type);
+  if (kind === "core.eq" || kind === "core.filter") {
     const canvas = el("canvas.eq-canvas");
     parts.push(canvas);
     // No listener here: the panel already re-renders on "mix", and a
     // subscription per render would pile up one leak per click.
     requestAnimationFrame(() => paintResponse(canvas, def));
   }
-  body.append(section(meta.label, ...parts, ...rows));
+  body.append(section(plugin.name, ...parts, ...rows));
+}
+
+/**
+ * An insert whose plugin is not registered. Audio passes through untouched and
+ * the stored parameters are shown read-only, because they are what makes the
+ * effect recoverable — install the plugin and the insert comes back exactly as
+ * it was saved.
+ */
+function renderMissingFx(owner, def) {
+  titleEl.textContent = "Missing plugin";
+  body.append(
+    section(
+      def.type,
+      el("div.insp-empty", null, `No plugin is registered for "${def.type}".`),
+      el(
+        "div.insp-empty",
+        null,
+        "This insert is passing audio through unchanged. Its settings are kept, so installing the plugin restores it.",
+      ),
+      el("pre.fx-dump", null, JSON.stringify(def.params ?? {}, null, 2)),
+      el(
+        "div.btnrow",
+        null,
+        btn("Install plugin…", () => import("./plugins.js").then((m) => m.pluginManager())),
+        btn(
+          "Remove insert",
+          () => {
+            pushUndo("remove insert");
+            owner.fx = owner.fx.filter((f) => f.id !== def.id);
+            engine.syncGraph();
+            changed("mix");
+            showInspector({ kind: mode.ownerId === "master" ? "master" : "track", id: mode.ownerId });
+          },
+          true,
+        ),
+        btn("◂ back", () => showInspector({ kind: mode.ownerId === "master" ? "master" : "track", id: mode.ownerId })),
+      ),
+    ),
+  );
 }
 
 function setParam(def, key, value, commit = true) {
