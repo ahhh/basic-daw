@@ -1,0 +1,361 @@
+// Project IO: autosave to IndexedDB, open/save-as, JSON export/import, and
+// bounce (master mixdown, stems, selection).
+
+import { assets, bus, changed, clearHistory, newProject, PROJECT_VERSION, state } from "./state.js";
+import { dialog, download, el, fmtBytes, fmtDur, toast, uid, $ } from "./util.js";
+import { engine } from "./audio/engine.js";
+import { renderRange, normalizeBuffer, analyzeBuffer } from "./audio/render.js";
+import { encodeWav } from "./audio/wav.js";
+import { rehydrateAssets, serializeAssets } from "./assets.js";
+import { getAssetBlob, putAssetBlob, putProject, getProject, listProjects, deleteProject, setMeta, getMeta, storageEstimate } from "./storage/db.js";
+
+/* ── save / load ──────────────────────────────────────────────────────── */
+
+export function serializeProject() {
+  return { version: PROJECT_VERSION, project: state.project, assets: serializeAssets(), savedAt: Date.now() };
+}
+
+export async function saveProject(silent = false) {
+  const doc = serializeProject();
+  await putProject({ id: state.project.id, name: state.project.name, doc, updatedAt: Date.now() });
+  await setMeta("lastProject", state.project.id);
+  state.dirty = false;
+  bus.emit("saved");
+  if (!silent) toast(`Saved “${state.project.name}”`, "ok");
+}
+
+export async function loadProjectDoc(doc) {
+  engine.stop();
+  state.project = doc.project;
+  state.selection.clear();
+  state.selectedTrackId = state.project.tracks[0]?.id ?? null;
+  state.playhead = 0;
+  clearHistory();
+  await rehydrateAssets(doc.assets);
+  engine.syncGraph();
+  state.dirty = false;
+  changed("project", false);
+  bus.emit("tracks");
+  bus.emit("assets");
+}
+
+export async function openProjectById(id) {
+  const rec = await getProject(id);
+  if (!rec) return toast("Project not found", "err");
+  await loadProjectDoc(rec.doc);
+  await setMeta("lastProject", id);
+  toast(`Opened “${rec.doc.project.name}”`, "ok");
+}
+
+export async function restoreLastSession() {
+  const id = await getMeta("lastProject");
+  if (!id) return false;
+  const rec = await getProject(id);
+  if (!rec) return false;
+  await loadProjectDoc(rec.doc);
+  return true;
+}
+
+export async function newSession() {
+  if (state.dirty && !confirm("Discard unsaved changes?")) return;
+  engine.stop();
+  state.project = newProject(`Session ${new Date().toISOString().slice(0, 10)}`);
+  state.selection.clear();
+  state.selectedTrackId = state.project.tracks[0].id;
+  clearHistory();
+  engine.syncGraph();
+  changed("project", false);
+  bus.emit("tracks");
+  toast("New session", "ok");
+}
+
+let autosaveTimer = null;
+export function startAutosave(intervalMs = 20000) {
+  clearInterval(autosaveTimer);
+  autosaveTimer = setInterval(() => {
+    if (state.dirty && !engine.recording) saveProject(true).catch(() => {});
+  }, intervalMs);
+}
+
+/* ── project menu ─────────────────────────────────────────────────────── */
+
+export function projectMenu(anchor) {
+  return [
+    { title: "Project" },
+    { label: "New session", onClick: () => newSession() },
+    { label: "Save", sc: "Ctrl+S", onClick: () => saveProject() },
+    { label: "Save as…", onClick: () => saveAs() },
+    { label: "Open…", onClick: () => openDialog() },
+    "-",
+    { label: "Export project file", onClick: () => exportProjectFile(false) },
+    { label: "Export bundle (with audio)", onClick: () => exportProjectFile(true) },
+    { label: "Import project file…", onClick: () => $("#proj-input").click() },
+    "-",
+    { label: "Storage…", onClick: () => storageDialog() },
+  ];
+}
+
+async function saveAs() {
+  const name = prompt("Save session as", `${state.project.name} copy`);
+  if (!name) return;
+  state.project = { ...state.project, id: uid("prj"), name };
+  await saveProject();
+  changed("project", false);
+}
+
+async function openDialog() {
+  const list = await listProjects();
+  list.sort((a, b) => b.updatedAt - a.updatedAt);
+  dialog("Open project", (body, close) => {
+    if (!list.length) body.append(el("div.insp-empty", null, "No saved projects yet."));
+    for (const rec of list) {
+      body.append(
+        el(
+          "div.prow",
+          null,
+          el("div.grow", null, el("b", null, rec.name), el("div.a-meta", null, new Date(rec.updatedAt).toLocaleString())),
+          el("button.btn.primary", {
+            onclick: async () => {
+              close();
+              await openProjectById(rec.id);
+            },
+            textContent: "Open",
+          }),
+          el("button.btn.warn", {
+            onclick: async () => {
+              if (!confirm(`Delete “${rec.name}”?`)) return;
+              await deleteProject(rec.id);
+              close();
+              openDialog();
+            },
+            textContent: "Delete",
+          }),
+        ),
+      );
+    }
+  });
+}
+
+/** Project file. With `withAudio` the pool is inlined as base64 for portability. */
+async function exportProjectFile(withAudio) {
+  const doc = serializeProject();
+  if (withAudio) {
+    doc.audio = {};
+    for (const id of assets.keys()) {
+      const rec = await getAssetBlob(id);
+      if (!rec?.blob) continue;
+      doc.audio[id] = { type: rec.type, name: rec.name, data: await blobToBase64(rec.blob) };
+    }
+  }
+  const blob = new Blob([JSON.stringify(doc)], { type: "application/json" });
+  download(blob, `${state.project.name.replace(/[^\w.-]+/g, "_")}${withAudio ? ".bundle" : ""}.dawproj`);
+  toast(`Exported ${fmtBytes(blob.size)}`, "ok");
+}
+
+export async function importProjectFile(file) {
+  const doc = JSON.parse(await file.text());
+  if (!doc.project) return toast("Not a project file", "err");
+  if (doc.audio) {
+    for (const [id, rec] of Object.entries(doc.audio)) {
+      const blob = base64ToBlob(rec.data, rec.type);
+      await putAssetBlob({ id, name: rec.name, type: rec.type, size: blob.size, blob, createdAt: Date.now() });
+    }
+  }
+  await loadProjectDoc(doc);
+  await saveProject(true);
+  toast(`Imported “${doc.project.name}”`, "ok");
+}
+
+function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onload = () => resolve(String(fr.result).split(",")[1]);
+    fr.onerror = reject;
+    fr.readAsDataURL(blob);
+  });
+}
+
+function base64ToBlob(b64, type) {
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new Blob([bytes], { type: type || "audio/wav" });
+}
+
+async function storageDialog() {
+  const est = await storageEstimate();
+  const projects = await listProjects();
+  dialog("Storage", (body) => {
+    body.append(
+      el("div.prow", null, el("label", null, "Projects"), el("span.val", null, String(projects.length))),
+      el("div.prow", null, el("label", null, "Pool"), el("span.val", null, String(assets.size))),
+      est
+        ? el(
+            "div.prow",
+            null,
+            el("label", null, "Used"),
+            el("span.val", null, `${fmtBytes(est.usage ?? 0)} / ${fmtBytes(est.quota ?? 0)}`),
+          )
+        : el("div.insp-empty", null, "Storage estimate unavailable in this browser."),
+      el(
+        "div.insp-empty",
+        null,
+        "Audio lives in this browser's IndexedDB, per origin. Export a bundle to move a session to another machine.",
+      ),
+    );
+  });
+}
+
+/* ── bounce ───────────────────────────────────────────────────────────── */
+
+export function exportMenu() {
+  const loop = state.project.loop;
+  return [
+    { title: "Export" },
+    { label: "Bounce master…", onClick: () => bounceDialog("master") },
+    { label: "Bounce loop region…", disabled: !(loop.end > loop.start), onClick: () => bounceDialog("loop") },
+    { label: "Bounce selection…", disabled: !state.selection.size, onClick: () => bounceDialog("selection") },
+    "-",
+    { label: "Export stems (one WAV per track)…", onClick: () => bounceDialog("stems") },
+  ];
+}
+
+function rangeFor(kind) {
+  const p = state.project;
+  if (kind === "loop") return [p.loop.start, p.loop.end];
+  if (kind === "selection") {
+    const sel = p.clips.filter((c) => state.selection.has(c.id));
+    if (sel.length) return [Math.min(...sel.map((c) => c.start)), Math.max(...sel.map((c) => c.start + c.duration))];
+  }
+  let end = 0;
+  for (const c of p.clips) end = Math.max(end, c.start + c.duration);
+  return [0, end];
+}
+
+function bounceDialog(kind) {
+  const [start, end] = rangeFor(kind);
+  if (end <= start) return toast("Nothing to bounce", "err");
+
+  let bits = 24;
+  let rate = engine.sampleRate;
+  let normalize = false;
+  let tail = 2;
+
+  dialog(
+    kind === "stems" ? "Export stems" : "Bounce",
+    (body, close) => {
+      const bar = el("i");
+      const progress = el("div.progress", { style: { display: "none" } }, bar);
+      const info = el("div.insp-empty", null, `Range ${fmtDur(start)} → ${fmtDur(end)} (${fmtDur(end - start)})`);
+
+      const sel = (label, options, value, onChange) => {
+        const s = el("select.select", { onchange: (e) => onChange(e.target.value) });
+        for (const o of options) s.append(el("option", { value: String(o.v), selected: o.v === value }, o.l));
+        return el("div.prow", null, el("label", null, label), s);
+      };
+
+      body.append(
+        info,
+        sel(
+          "Bit depth",
+          [
+            { v: 16, l: "16-bit PCM" },
+            { v: 24, l: "24-bit PCM" },
+            { v: 32, l: "32-bit float" },
+          ],
+          bits,
+          (v) => (bits = Number(v)),
+        ),
+        sel(
+          "Sample rate",
+          [
+            { v: 44100, l: "44.1 kHz" },
+            { v: 48000, l: "48 kHz" },
+            { v: 96000, l: "96 kHz" },
+          ],
+          rate,
+          (v) => (rate = Number(v)),
+        ),
+        sel(
+          "Tail",
+          [
+            { v: 0, l: "none" },
+            { v: 2, l: "2 s" },
+            { v: 5, l: "5 s" },
+          ],
+          tail,
+          (v) => (tail = Number(v)),
+        ),
+        el(
+          "div.prow",
+          null,
+          el("label", null, "Normalize"),
+          el("input", { type: "checkbox", onchange: (e) => (normalize = e.target.checked) }),
+          el("span.val", null, "peak -0.3 dB"),
+        ),
+        progress,
+      );
+
+      body.dataset.run = "1";
+      body.__run = async () => {
+        progress.style.display = "block";
+        const onProgress = (p) => (bar.style.width = `${Math.round(p * 100)}%`);
+        try {
+          if (kind === "stems") await bounceStems({ start, end, bits, rate, normalize, tail, onProgress });
+          else await bounceMix({ start, end, bits, rate, normalize, tail, onProgress });
+          close();
+        } catch (err) {
+          console.error(err);
+          toast(`Bounce failed: ${err.message}`, "err", 6000);
+        }
+      };
+    },
+    [
+      { label: "Cancel" },
+      {
+        label: kind === "stems" ? "Export stems" : "Bounce",
+        primary: true,
+        onClick: (body) => {
+          body.__run();
+          return false; // the run closes the dialog itself
+        },
+      },
+    ],
+  );
+}
+
+async function bounceMix({ start, end, bits, rate, normalize, tail, onProgress }) {
+  const t0 = performance.now();
+  const buffer = await renderRange(start, end, { sampleRate: rate, tailSec: tail, onProgress });
+  if (normalize) normalizeBuffer(buffer, -0.3);
+  const stats = analyzeBuffer(buffer);
+  const blob = encodeWav(buffer, bits);
+  download(blob, `${state.project.name.replace(/[^\w.-]+/g, "_")}.wav`);
+  toast(
+    `Bounced ${fmtDur(buffer.duration)} · ${fmtBytes(blob.size)} · peak ${stats.peakDb.toFixed(1)} dB · ${(
+      (performance.now() - t0) / 1000
+    ).toFixed(1)}s`,
+    "ok",
+    5000,
+  );
+}
+
+async function bounceStems({ start, end, bits, rate, normalize, tail, onProgress }) {
+  const tracks = state.project.tracks;
+  for (let i = 0; i < tracks.length; i++) {
+    const track = tracks[i];
+    const buffer = await renderRange(start, end, {
+      sampleRate: rate,
+      tailSec: tail,
+      trackIds: [track.id],
+      applyMaster: false,
+      onProgress: (p) => onProgress((i + p) / tracks.length),
+    });
+    if (normalize) normalizeBuffer(buffer, -0.3);
+    const safe = track.name.replace(/[^\w.-]+/g, "_");
+    download(encodeWav(buffer, bits), `${String(i + 1).padStart(2, "0")}_${safe}.wav`);
+    // Browsers throttle rapid downloads; give each one a beat to land.
+    await new Promise((r) => setTimeout(r, 350));
+  }
+  toast(`Exported ${tracks.length} stems`, "ok");
+}

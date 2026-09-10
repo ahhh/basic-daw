@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Basic DAW</title>
+    <link rel="stylesheet" href="./css/style.css" />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='13' font-size='13'>&#127911;</text></svg>"
+    />
+  </head>
+  <body>
+    <div id="app">
+      <!-- ── Transport / top bar ─────────────────────────────────────────── -->
+      <header id="topbar">
+        <div class="brand">BASIC<span>DAW</span></div>
+
+        <div class="transport">
+          <button id="btn-goto-start" class="tbtn" title="Return to start (Home)">⏮</button>
+          <button id="btn-play" class="tbtn play" title="Play / Pause (Space)">▶</button>
+          <button id="btn-stop" class="tbtn" title="Stop (Return)">⏹</button>
+          <button id="btn-record" class="tbtn rec" title="Record armed tracks (R)">⏺</button>
+          <button id="btn-loop" class="tbtn toggle" title="Loop region (L)">⟲</button>
+          <button id="btn-metro" class="tbtn toggle" title="Metronome (K)">🎵</button>
+          <button id="btn-follow" class="tbtn toggle on" title="Follow playhead (F)">➤</button>
+        </div>
+
+        <div class="readout">
+          <div class="bbt" id="pos-bbt">001.1.000</div>
+          <div class="tc" id="pos-time">0:00.000</div>
+        </div>
+
+        <label class="field" title="Tempo">
+          <span>BPM</span>
+          <input id="in-bpm" class="num" type="number" min="20" max="300" step="0.01" value="120" />
+        </label>
+        <label class="field" title="Time signature">
+          <span>SIG</span>
+          <input id="in-sig-num" class="num tiny" type="number" min="1" max="16" value="4" />
+          <em>/</em>
+          <select id="in-sig-den" class="select tiny">
+            <option>2</option>
+            <option>4</option>
+            <option selected>4</option>
+            <option>8</option>
+            <option>16</option>
+          </select>
+        </label>
+        <label class="field" title="Grid snapping">
+          <span>SNAP</span>
+          <select id="in-snap" class="select">
+            <option value="off">Off</option>
+            <option value="bar">Bar</option>
+            <option value="beat" selected>Beat</option>
+            <option value="1/2">1/2</option>
+            <option value="1/4">1/4</option>
+            <option value="1/8">1/8</option>
+            <option value="1/16">1/16</option>
+            <option value="1/3">1/3 (triplet)</option>
+            <option value="sec">Second</option>
+          </select>
+        </label>
+
+        <div class="spacer"></div>
+
+        <div class="master-meter" title="Master output">
+          <div class="mm-bars">
+            <div class="mm-bar"><i id="mm-l"></i></div>
+            <div class="mm-bar"><i id="mm-r"></i></div>
+          </div>
+          <div class="mm-peak" id="mm-peak">-∞</div>
+        </div>
+
+        <div class="topmenu">
+          <button id="btn-import" class="btn" title="Import audio files (Ctrl+I)">Import…</button>
+          <button id="btn-export" class="btn" title="Bounce / export">Export ▾</button>
+          <button id="btn-project" class="btn" title="Project files">Project ▾</button>
+          <button id="btn-undo" class="btn icon" title="Undo (Ctrl+Z)">↶</button>
+          <button id="btn-redo" class="btn icon" title="Redo (Ctrl+Shift+Z)">↷</button>
+          <button id="btn-help" class="btn icon" title="Keyboard shortcuts (?)">?</button>
+        </div>
+      </header>
+
+      <!-- ── Left: browser ───────────────────────────────────────────────── -->
+      <aside id="sidebar">
+        <div class="panel-head">
+          <h2>Pool</h2>
+          <button id="btn-add-asset" class="mini" title="Import audio">+</button>
+        </div>
+        <input id="asset-search" class="search" type="search" placeholder="filter…" />
+        <ul id="asset-list" class="asset-list"></ul>
+        <div class="drop-hint" id="pool-drop">Drop stems / samples here</div>
+
+        <div class="panel-head">
+          <h2>Project</h2>
+        </div>
+        <div id="project-info" class="project-info"></div>
+      </aside>
+
+      <div class="vsplit" id="split-left" data-target="sidebar"></div>
+
+      <!-- ── Center: arrangement ─────────────────────────────────────────── -->
+      <section id="arrange">
+        <div class="arrange-top">
+          <div class="track-head-spacer">
+            <button id="btn-add-track" class="mini wide" title="Add track (T)">+ Track</button>
+            <div class="zoomers">
+              <button id="btn-zoom-out" class="mini" title="Zoom out (-)">−</button>
+              <button id="btn-zoom-in" class="mini" title="Zoom in (+)">+</button>
+              <button id="btn-zoom-fit" class="mini" title="Zoom to fit (Z)">⤢</button>
+            </div>
+          </div>
+          <canvas id="ruler"></canvas>
+        </div>
+        <div class="arrange-body">
+          <div id="track-heads" class="track-heads"></div>
+          <div class="lane-wrap">
+            <canvas id="lanes"></canvas>
+          </div>
+        </div>
+        <div class="arrange-foot">
+          <div id="status" class="status">Ready</div>
+        </div>
+      </section>
+
+      <div class="vsplit" id="split-right" data-target="inspector"></div>
+
+      <!-- ── Right: inspector ────────────────────────────────────────────── -->
+      <aside id="inspector">
+        <div class="panel-head">
+          <h2 id="insp-title">Inspector</h2>
+        </div>
+        <div id="insp-body" class="insp-body"></div>
+      </aside>
+
+      <!-- ── Bottom: mixer ───────────────────────────────────────────────── -->
+      <div class="hsplit" id="split-mixer"></div>
+      <section id="mixer">
+        <div class="panel-head mixer-head">
+          <h2>Mixer</h2>
+          <div class="spacer"></div>
+          <button id="btn-mixer-toggle" class="mini" title="Show / hide mixer (F3)">▾</button>
+        </div>
+        <div id="mixer-strips" class="mixer-strips"></div>
+      </section>
+    </div>
+
+    <input id="file-input" type="file" accept="audio/*,.wav,.mp3,.ogg,.flac,.m4a,.aac,.aif,.aiff,.webm" multiple hidden />
+    <input id="proj-input" type="file" accept=".dawproj,.json" hidden />
+    <div id="overlay" class="overlay" hidden></div>
+    <div id="menu-layer"></div>
+    <div id="toast-layer"></div>
+
+    <script type="module" src="./src/main.js"></script>
+  </body>
+</html>
