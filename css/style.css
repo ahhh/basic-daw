@@ -20,6 +20,12 @@
   box-sizing: border-box;
 }
 
+/* Author `display` rules beat the UA sheet's [hidden], so make the attribute
+   authoritative — .overlay's display:flex was showing the scrim while hidden. */
+[hidden] {
+  display: none !important;
+}
+
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;
